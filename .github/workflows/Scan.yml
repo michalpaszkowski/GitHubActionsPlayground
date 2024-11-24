@@ -1,0 +1,45 @@
+name: Scan PR for Banned Words
+
+on:
+  pull_request:
+
+jobs:
+  scan-for-banned-words:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Scan for banned words in PR diff
+      run: |
+        # Define the list of banned words
+        banned_words=("foo" "bar")
+        error=0
+
+        # Get PR details
+        PR_NUMBER=${{ github.event.pull_request.number }}
+        OWNER=${{ github.repository.owner.login }}
+        REPO=${{ github.event.repository.name }}
+
+        # Fetch the PR diff from GitHub API
+        curl -s -H "Accept: application/vnd.github.v3.diff" \
+             "https://api.github.com/repos/$OWNER/$REPO/pulls/$PR_NUMBER" > pr.diff
+
+        # Extract added or modified lines (lines starting with '+' but not '+++')
+        grep "^+[^+]" pr.diff > added_lines.txt
+
+        # Loop through each added line
+        while read -r line; do
+          # Loop through each banned word
+          for word in "${banned_words[@]}"; do
+            if echo "$line" | grep -wq "$word"; then
+              echo "❌ Found banned word '$word' in line:"
+              echo "$line"
+              error=1
+            fi
+          done
+        done < added_lines.txt
+
+        # Exit with error if any banned words were found
+        if [[ $error -eq 1 ]]; then
+          exit 1
+        else
+          echo "✅ No banned words found in added or changed lines."
+        fi
