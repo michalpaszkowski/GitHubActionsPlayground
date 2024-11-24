@@ -16,7 +16,7 @@ jobs:
       run: |
         curl -s -H "Accept: application/vnd.github.v3.diff" \
              -H "Authorization: token $GITHUB_TOKEN" \
-             "https://api.github.com/repos/${{ github.repository.owner.login }}/${{ github.event.repository.name }}/pulls/${{ github.event.pull_request.number }}" > pr.diff
+             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" > pr.diff
 
     - name: Scan for banned words in PR diff (C++ files only)
       run: |
