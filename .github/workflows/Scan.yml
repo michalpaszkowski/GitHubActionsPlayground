@@ -20,8 +20,6 @@ jobs:
 
     - name: Scan for banned words in PR diff (C++ files only)
       run: |
-        #!/usr/bin/env python3
-
         import sys
 
         # Define the list of banned words
@@ -94,3 +92,4 @@ jobs:
             sys.exit(1)
         else:
             print("✅ No banned words found in added or changed lines of C++ files.")
+      shell: python3 {0}
