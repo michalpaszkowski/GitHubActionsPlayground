@@ -7,59 +7,90 @@ jobs:
   scan-for-banned-words:
     runs-on: ubuntu-latest
     steps:
-    - name: Scan for banned words in PR diff (C++ files only)
+    - name: Fetch PR diff
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        OWNER: ${{ github.repository.owner.login }}
+        REPO: ${{ github.event.repository.name }}
       run: |
-        # Define the list of banned words
-        banned_words=("foo" "bar")
-        error=0
-
-        # Get PR details
-        PR_NUMBER=${{ github.event.pull_request.number }}
-        OWNER=${{ github.repository.owner.login }}
-        REPO=${{ github.event.repository.name }}
-
-        # Fetch the PR diff from GitHub API
         curl -s -H "Accept: application/vnd.github.v3.diff" \
              -H "Authorization: token $GITHUB_TOKEN" \
              "https://api.github.com/repos/$OWNER/$REPO/pulls/$PR_NUMBER" > pr.diff
 
-        # Initialize variables
-        current_file=""
-        process_file=0
+    - name: Scan for banned words in PR diff (C++ files only)
+      run: |
+        #!/usr/bin/env python3
 
-        # Read the diff line by line
-        while IFS= read -r line; do
-          # Check for diff headers indicating a new file
-          if [[ $line =~ ^diff\ --git\ a\/(.+)\ b\/(.+) ]]; then
-            # Extract the file name
-            current_file="${BASH_REMATCH[2]}"
-            # Check if the file has a C++ extension
-            if [[ $current_file =~ \.(cpp|cxx|cc|c|hpp|h|hxx|hh)$ ]]; then
-              process_file=1
-            else
-              process_file=0
-            fi
-          elif [[ $process_file -eq 1 ]]; then
-            # Check for added lines
-            if [[ $line =~ ^\+[^+]{1} ]]; then
-              added_line="${line:1}"  # Remove the '+' sign
-              # Loop through each banned word
-              for word in "${banned_words[@]}"; do
-                if echo "$added_line" | grep -wq "$word"; then
-                  echo "❌ Found banned word '$word' in file '$current_file':"
-                  echo "$added_line"
-                  error=1
-                fi
-              done
-            fi
-          fi
-        done < pr.diff
+        import sys
+
+        # Define the list of banned words
+        banned_words = ["foo", "bar"]
+        error_found = False
+
+        # Initialize variables
+        current_file = ""
+        process_file = False
+
+        # List of C++ file extensions
+        cpp_extensions = ('.cpp', '.cxx', '.cc', '.c', '.hpp', '.h', '.hxx', '.hh')
+
+        # Function to tokenize a line into words without using regex
+        def tokenize(line):
+            tokens = []
+            current_word = ''
+            for c in line:
+                if c.isalnum() or c == '_':
+                    current_word += c
+                else:
+                    if current_word:
+                        tokens.append(current_word)
+                        current_word = ''
+            if current_word:
+                tokens.append(current_word)
+            return tokens
+
+        # Open and read the diff file
+        with open('pr.diff', 'r', encoding='utf-8') as diff_file:
+            for line in diff_file:
+                line = line.rstrip('\n')
+
+                # Check for diff headers to identify file changes
+                if line.startswith('diff --git a/'):
+                    # Extract current_file from the line
+                    parts = line.split(' b/')
+                    if len(parts) == 2:
+                        current_file = parts[1]
+                    else:
+                        current_file = ''
+                    process_file = False  # Reset processing flag until file extension is confirmed
+                    continue
+
+                # Check for lines indicating new or changed files
+                if line.startswith('+++ b/'):
+                    current_file = line[6:]  # Remove '+++ b/' prefix
+                    # Check if the file has a C++ extension
+                    if current_file.endswith(cpp_extensions):
+                        process_file = True
+                    else:
+                        process_file = False
+                    continue
+
+                # Process added lines if the file is a C++ file
+                if process_file:
+                    if line.startswith('+') and not line.startswith('+++'):
+                        added_line = line[1:]  # Remove the '+' sign
+                        # Tokenize the added line into words
+                        tokens = tokenize(added_line)
+                        # Scan the added line for banned words
+                        for word in banned_words:
+                            if word in tokens:
+                                print(f"❌ Found banned word '{word}' in file '{current_file}':")
+                                print(added_line)
+                                error_found = True
 
         # Exit with error if any banned words were found
-        if [[ $error -eq 1 ]]; then
-          exit 1
-        else
-          echo "✅ No banned words found in added or changed lines of C++ files."
-        fi
+        if error_found:
+            sys.exit(1)
+        else:
+            print("✅ No banned words found in added or changed lines of C++ files.")
