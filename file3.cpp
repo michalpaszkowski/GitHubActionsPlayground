@@ -1,1 +1,1 @@
-getPointerElementType getNonOpaquePointerElementType
+getPointerElementType
