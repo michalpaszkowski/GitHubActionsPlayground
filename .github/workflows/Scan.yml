@@ -1,4 +1,4 @@
-name: Scan PR for Banned Words in C++ Files
+name: Avoid LLVM pointer element type APIs
 
 on:
   pull_request:
@@ -7,33 +7,30 @@ jobs:
   scan-for-banned-words:
     runs-on: ubuntu-latest
     steps:
-    - name: Fetch PR diff
+    - name: Fetch pull request diff
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        OWNER: ${{ github.repository.owner.login }}
-        REPO: ${{ github.event.repository.name }}
+        OWNER_AND_REPO: ${{ github.repository }}
       run: |
         curl -s -H "Accept: application/vnd.github.v3.diff" \
              -H "Authorization: token $GITHUB_TOKEN" \
-             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" > pr.diff
+             "https://api.github.com/repos/$OWNER_AND_REPO/pulls/$PR_NUMBER" > pr.diff
 
-    - name: Scan for banned words in PR diff (C++ files only)
+    - name: Scan for LLVM pointer element type APIs
       run: |
         import sys
 
-        # Define the list of banned words
-        banned_words = ["foo", "bar"]
-        error_found = False
+        # Banned LLVM pointer element type APIs
+        pointer_element_type_API_method_names = ["getPointerElementType", "getNonOpaquePtrEltTy", "getNonOpaquePointerElementType"]
 
-        # Initialize variables
+        found = False
+
         current_file = ""
         process_file = False
 
-        # List of C++ file extensions
-        cpp_extensions = ('.cpp', '.cxx', '.cc', '.c', '.hpp', '.h', '.hxx', '.hh')
+        cpp_extensions = ('.cpp', '.cxx', '.cc', '.c', '.c++', '.hpp', '.h', '.hxx', '.hh', '.h++')
 
-        # Function to tokenize a line into words without using regex
         def tokenize(line):
             tokens = []
             current_word = ''
@@ -48,7 +45,6 @@ jobs:
                 tokens.append(current_word)
             return tokens
 
-        # Open and read the diff file
         with open('pr.diff', 'r', encoding='utf-8') as diff_file:
             for line in diff_file:
                 line = line.rstrip('\n')
@@ -67,29 +63,29 @@ jobs:
                 # Check for lines indicating new or changed files
                 if line.startswith('+++ b/'):
                     current_file = line[6:]  # Remove '+++ b/' prefix
-                    # Check if the file has a C++ extension
+                    # Process only C++ files
                     if current_file.endswith(cpp_extensions):
                         process_file = True
                     else:
                         process_file = False
                     continue
 
-                # Process added lines if the file is a C++ file
                 if process_file:
                     if line.startswith('+') and not line.startswith('+++'):
                         added_line = line[1:]  # Remove the '+' sign
                         # Tokenize the added line into words
                         tokens = tokenize(added_line)
-                        # Scan the added line for banned words
-                        for word in banned_words:
+                        # Scan the added line for LLVM pointer element type API method names
+                        for word in pointer_element_type_API_method_names:
                             if word in tokens:
-                                print(f"❌ Found banned word '{word}' in file '{current_file}':")
+                                print(f"Found a reference to LLVM pointer element type API '{word}' in the file '{current_file}':")
                                 print(added_line)
-                                error_found = True
+                                found = True
 
         # Exit with error if any banned words were found
-        if error_found:
+        if found:
+            print("Please remove all references to typed pointer APIs before merging (see https://llvm.org/docs/OpaquePointers.html for transition tips).")
             sys.exit(1)
         else:
-            print("✅ No banned words found in added or changed lines of C++ files.")
+            print("No new LLVM typed pointer APIs found in the diff.")
       shell: python3 {0}
