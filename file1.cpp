@@ -1,3 +1,3 @@
 foo
-getNonOpaquePtrEltTy
+/*getNonOpaquePtrEltTy*/
 baz
