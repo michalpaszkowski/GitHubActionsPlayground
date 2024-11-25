@@ -45,6 +45,36 @@ jobs:
                 tokens.append(current_word)
             return tokens
 
+        in_block_comment = False  # Initialize block comment flag
+
+        def remove_comments(line, in_block_comment):
+            result = ''
+            i = 0
+            while i < len(line):
+                if in_block_comment:
+                    # Look for end of block comment
+                    end = line.find('*/', i)
+                    if end == -1:
+                        # Rest of the line is inside a block comment
+                        break
+                    else:
+                        # End of block comment found
+                        in_block_comment = False
+                        i = end + 2
+                else:
+                    # Not inside a block comment
+                    if line.startswith('//', i):
+                        # Single-line comment detected, skip rest of the line
+                        break
+                    elif line.startswith('/*', i):
+                        # Start of block comment detected
+                        in_block_comment = True
+                        i += 2
+                    else:
+                        result += line[i]
+                        i += 1
+            return result, in_block_comment
+
         with open('pr.diff', 'r', encoding='utf-8') as diff_file:
             for line in diff_file:
                 line = line.rstrip('\n')
@@ -73,8 +103,11 @@ jobs:
                 if process_file:
                     if line.startswith('+') and not line.startswith('+++'):
                         added_line = line[1:]  # Remove the '+' sign
-                        # Tokenize the added line into words
-                        tokens = tokenize(added_line)
+
+                        # Tokenize the added line without comments
+                        added_line_no_comments, in_block_comment = remove_comments(added_line, in_block_comment)
+                        tokens = tokenize(added_line_no_comments)
+
                         # Scan the added line for LLVM pointer element type API method names
                         for word in pointer_element_type_API_method_names:
                             if word in tokens:
@@ -82,7 +115,7 @@ jobs:
                                 print(added_line)
                                 found = True
 
-        # Exit with error if any banned words were found
+        # Exit with error if any banned APIs were found
         if found:
             print("Please remove all references to typed pointer APIs before merging (see https://llvm.org/docs/OpaquePointers.html for transition tips).")
             sys.exit(1)
